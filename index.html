@@ -10,5 +10,26 @@ header{display:block}.tabs{display:none}.tool[hidden]{display:block}.tool+.tool{
 const $=s=>document.querySelector(s);let timer;document.querySelectorAll('.tab').forEach(tab=>tab.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===tab));document.querySelectorAll('.tool').forEach(x=>x.hidden=x.id!==tab.dataset.tool)});function draw(box,value,size=260){box.replaceChildren();new QRCode(box,{text:value,width:size,height:size,colorDark:'#111827',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M})}function downloadQr(box,name){const canvas=box.querySelector('canvas'),img=box.querySelector('img'),url=canvas?canvas.toDataURL('image/png'):img?.src;if(!url)return;const a=document.createElement('a');a.href=url;a.download=name;a.click()}
 const text=$('#text'),textQr=$('#textQr'),textStatus=$('#textStatus'),count=$('#count'),copyText=$('#copyText'),downloadText=$('#downloadText');function updateText(){const value=text.value,bytes=new TextEncoder().encode(value).length;count.textContent=`${value.length} 字符 · ${bytes} 字节`;textQr.innerHTML='';copyText.disabled=downloadText.disabled=!value;if(!value){textQr.innerHTML='<div class="placeholder">二维码会显示在这里</div>';textStatus.textContent='等待输入';textStatus.className='status';return}if(!window.QRCode){textStatus.textContent='二维码组件加载失败，请刷新页面';textStatus.className='status error';return}try{if(location.protocol==='file:')throw new Error('online');const data=new TextEncoder().encode(value);let binary='';data.forEach(b=>binary+=String.fromCharCode(b));const encoded=btoa(binary).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');const viewer=new URL('view.html',location.href);viewer.hash=encoded;draw(textQr,viewer.href);textStatus.textContent=bytes>1200?'内容较长，请实际扫码确认':'已生成';textStatus.className='status success'}catch(error){textQr.innerHTML=`<div class="placeholder">${error.message==='online'?'请使用 GitHub 在线地址':'内容太长，无法放入二维码'}</div>`;textStatus.textContent=error.message==='online'?'本地文件不能生成手机访问链接':'内容超过二维码容量';textStatus.className='status error';downloadText.disabled=true}}text.oninput=()=>{clearTimeout(timer);timer=setTimeout(updateText,180)};copyText.onclick=async()=>{await navigator.clipboard.writeText(text.value);copyText.textContent='已复制';setTimeout(()=>copyText.textContent='复制文本',1200)};downloadText.onclick=()=>downloadQr(textQr,'文本二维码.png');
 const proxy=$('#proxy'),proxyQr=$('#proxyQr'),proxyStatus=$('#proxyStatus'),downloadProxy=$('#downloadProxy');function proxyError(value){if(!value)return'请先粘贴代理链接';if(!/^(socks5|socks):\/\//i.test(value))return'链接需要以 socks5:// 或 socks:// 开头';if(/\s/.test(value))return'链接中不能包含空格或换行';try{const u=new URL(value);if(!u.hostname||!u.port)return'代理链接缺少服务器地址或端口'}catch(_){return'代理链接格式不正确'}return''}$('#generateProxy').onclick=()=>{const value=proxy.value.trim(),error=proxyError(value);if(error){proxyStatus.textContent=error;proxyStatus.className='status error';downloadProxy.disabled=true;return}try{draw(proxyQr,value);proxyStatus.textContent='已生成，可用 Shadowrocket 扫码导入';proxyStatus.className='status success';downloadProxy.disabled=false}catch(_){proxyStatus.textContent='内容过长，无法生成二维码';proxyStatus.className='status error';downloadProxy.disabled=true}};$('#clearProxy').onclick=()=>{proxy.value='';proxyQr.innerHTML='<div class="placeholder">二维码会显示在这里</div>';proxyStatus.textContent='等待输入';proxyStatus.className='status';downloadProxy.disabled=true;proxy.focus()};downloadProxy.onclick=()=>downloadQr(proxyQr,`shadowrocket-proxy-${Date.now()}.png`);proxy.onkeydown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')$('#generateProxy').click()};
+</script><script>
+document.querySelector('#proxyTool .tool-title').textContent='支持 socks5:// 链接，也支持“服务器:端口:用户名:密码”格式，生成后使用 Shadowrocket 扫码导入。';
+proxy.placeholder='服务器:端口:用户名:密码\n或 socks5://用户名:密码@服务器:端口';
+function normalizeProxyInput(raw){
+  const value=raw.trim();
+  if(!value)return{error:'请先粘贴代理信息'};
+  if(/\s/.test(value))return{error:'代理信息中不能包含空格或换行'};
+  if(/^(socks5|socks):\/\//i.test(value)){
+    try{const u=new URL(value);if(!u.hostname||!u.port)return{error:'代理链接缺少服务器地址或端口'};return{url:value,converted:false}}catch(_){return{error:'代理链接格式不正确'}}
+  }
+  const match=value.match(/^([^:\s]+):(\d{1,5}):([^:\s]+):(.+)$/);
+  if(!match)return{error:'请输入“服务器:端口:用户名:密码”格式'};
+  const[,host,port,user,password]=match;
+  if(Number(port)<1||Number(port)>65535)return{error:'端口需要在 1 到 65535 之间'};
+  return{url:`socks5://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}`,converted:true};
+}
+document.querySelector('#generateProxy').onclick=()=>{
+  const result=normalizeProxyInput(proxy.value);
+  if(result.error){proxyStatus.textContent=result.error;proxyStatus.className='status error';downloadProxy.disabled=true;return}
+  try{draw(proxyQr,result.url);proxyStatus.textContent=result.converted?'已自动转换并生成，可用 Shadowrocket 扫码导入':'已生成，可用 Shadowrocket 扫码导入';proxyStatus.className='status success';downloadProxy.disabled=false}catch(_){proxyStatus.textContent='内容过长，无法生成二维码';proxyStatus.className='status error';downloadProxy.disabled=true}
+};
 </script></body></html>
 
