@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>文本二维码</title>
+  <style>
+    :root { color-scheme: light; --blue:#1677ff; --ink:#172033; --muted:#697386; --line:#e4e9f2; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; padding: 28px 16px;
+      display: grid; place-items: center; color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      background: radial-gradient(circle at 15% 10%, #dcebff 0, transparent 34%),
+                  radial-gradient(circle at 90% 90%, #e8e1ff 0, transparent 35%), #f7f9fc;
+    }
+    .app {
+      width: min(960px, 100%); padding: 26px; border: 1px solid rgba(255,255,255,.9);
+      border-radius: 24px; background: rgba(255,255,255,.86); backdrop-filter: blur(18px);
+      box-shadow: 0 24px 70px rgba(42,64,100,.14);
+    }
+    h1 { margin: 0 0 8px; font-size: clamp(26px, 4vw, 38px); letter-spacing: -.03em; }
+    .lead { margin: 0 0 24px; color: var(--muted); }
+    .grid { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; }
+    label { display: block; margin-bottom: 10px; font-weight: 650; }
+    textarea {
+      width: 100%; min-height: 310px; resize: vertical; padding: 16px;
+      border: 1px solid var(--line); border-radius: 15px; outline: none;
+      color: var(--ink); background: #fff; font: inherit; line-height: 1.65;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 4px rgba(22,119,255,.12); }
+    .meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .panel {
+      min-height: 390px; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 20px; border: 1px solid var(--line);
+      border-radius: 18px; background: #fff;
+    }
+    #qrcode { width: 260px; height: 260px; display: grid; place-items: center; }
+    #qrcode img, #qrcode canvas { max-width: 100%; height: auto !important; border-radius: 5px; }
+    .placeholder { text-align: center; color: #9aa3b2; line-height: 1.7; }
+    .actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+    button {
+      min-height: 44px; border: 0; border-radius: 12px; padding: 0 16px;
+      cursor: pointer; font: 650 15px inherit; transition: transform .12s, opacity .2s;
+    }
+    button:active { transform: scale(.98); }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+    .primary { color: #fff; background: var(--blue); }
+    .secondary { color: #29405e; background: #eef4ff; }
+    .tip { margin: 16px 0 0; color: var(--muted); font-size: 13px; text-align: center; line-height: 1.6; }
+    #status { color: #d64646; }
+    @media (max-width: 760px) {
+      .app { padding: 20px; } .grid { grid-template-columns: 1fr; }
+      textarea { min-height: 210px; } .panel { min-height: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1>文本变成二维码</h1>
+    <p class="lead">输入内容，iPhone 相机扫码后会打开文本页面，可一键复制。</p>
+    <div class="grid">
+      <section>
+        <label for="text">文本内容</label>
+        <textarea id="text" placeholder="例如：取件码 5821，放前台即可。" autofocus></textarea>
+        <div class="meta"><span id="status">等待输入</span><span id="count">0 字符 · 0 字节</span></div>
+      </section>
+      <section class="panel">
+        <div id="qrcode"><div class="placeholder">二维码会显示在这里</div></div>
+        <div class="actions">
+          <button id="copy" class="secondary" disabled>复制文本</button>
+          <button id="download" class="primary" disabled>下载二维码</button>
+        </div>
+        <p class="tip" id="tip">手机和电脑需连接同一个 Wi‑Fi。文本放在链接片段中，不会上传。</p>
+      </section>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script>
+    const text = document.querySelector('#text');
+    const box = document.querySelector('#qrcode');
+    const count = document.querySelector('#count');
+    const status = document.querySelector('#status');
+    const copyBtn = document.querySelector('#copy');
+    const downloadBtn = document.querySelector('#download');
+    let timer;
+
+    function update() {
+      const value = text.value;
+      const bytes = new TextEncoder().encode(value).length;
+      count.textContent = `${value.length} 字符 · ${bytes} 字节`;
+      box.innerHTML = '';
+      copyBtn.disabled = downloadBtn.disabled = !value;
+      if (!value) {
+        box.innerHTML = '<div class="placeholder">二维码会显示在这里</div>';
+        status.textContent = '等待输入';
+        return;
+      }
+      if (!window.QRCode) {
+        status.textContent = '二维码组件加载失败，请检查网络后刷新';
+        return;
+      }
+      try {
+        if (location.protocol === 'file:') {
+          box.innerHTML = '<div class="placeholder">请关闭此页面<br>双击“启动工具.bat”后使用</div>';
+          status.textContent = '需要通过启动工具打开';
+          downloadBtn.disabled = true;
+          return;
+        }
+        const bytesForUrl = new TextEncoder().encode(value);
+        let binary = '';
+        bytesForUrl.forEach(byte => binary += String.fromCharCode(byte));
+        const encoded = btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+        const viewerUrl = new URL('view.html', location.href);
+        viewerUrl.hash = encoded;
+        const qrText = viewerUrl.href;
+        new QRCode(box, { text: qrText, width: 260, height: 260, colorDark: '#111827', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+        status.textContent = bytes > 1200 ? '内容较长，请实际扫码确认' : '已生成';
+      } catch (_) {
+        box.innerHTML = '<div class="placeholder">内容太长，无法放入二维码<br>请缩短后重试</div>';
+        status.textContent = '内容超过二维码容量';
+        downloadBtn.disabled = true;
+      }
+    }
+
+    text.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(update, 180); });
+    copyBtn.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(text.value);
+      const old = copyBtn.textContent; copyBtn.textContent = '已复制';
+      setTimeout(() => copyBtn.textContent = old, 1200);
+    });
+    downloadBtn.addEventListener('click', () => {
+      const canvas = box.querySelector('canvas');
+      const img = box.querySelector('img');
+      const url = canvas ? canvas.toDataURL('image/png') : img?.src;
+      if (!url) return;
+      const a = document.createElement('a'); a.href = url; a.download = '文本二维码.png'; a.click();
+    });
+  </script>
+</body>
+</html>
+
